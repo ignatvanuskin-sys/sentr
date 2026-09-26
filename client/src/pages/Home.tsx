@@ -195,6 +195,10 @@ const PHONE_HREF = "tel:+77172709090";
 const CITY = "Астана";
 const ADDRESS = "пр. Тракт Астана, 21";
 const HOURS = "Ежедневно 09:00–21:00";
+
+/* Point used for the embedded map and the "open in maps" link.
+   Demo coordinates — replace with the exact pin of the real entrance. */
+const MAP_POINT = { lat: 51.1694, lon: 71.4491 };
 const CONTACT_LINKS = {
   phone: PHONE_HREF,
   whatsapp: "https://wa.me/77172709090",
@@ -480,6 +484,66 @@ const serviceTitleToOption: Record<string, string> = {
   Защита: "Керамическое покрытие",
   Салон: "Химчистка салона",
 };
+
+/**
+ * Contact map.
+ *
+ * The Yandex widget is a third-party iframe of a few hundred kilobytes, so it is
+ * only inserted after the block scrolls into view — a visitor who never reaches
+ * the contacts never pays for it. The button underneath always stays a real
+ * link, so the address is reachable even if the iframe is blocked or fails.
+ */
+function ContactMap() {
+  const holder = useRef<HTMLDivElement | null>(null);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const el = holder.current;
+    if (!el || visible) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setVisible(true);
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((e) => e.isIntersecting)) return;
+        setVisible(true);
+        io.disconnect();
+      },
+      // Start fetching a little before the block is fully on screen.
+      { rootMargin: "300px 0px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [visible]);
+
+  const src = `https://yandex.ru/map-widget/v1/?ll=${MAP_POINT.lon}%2C${MAP_POINT.lat}&z=16&pt=${MAP_POINT.lon}%2C${MAP_POINT.lat}%2Cpm2rdm`;
+
+  return (
+    <div className="contact-map reveal" ref={holder} data-shown="">
+      {visible ? (
+        <iframe
+          className="contact-map__frame"
+          src={src}
+          title={`Карта: ${CITY}, ${ADDRESS}`}
+          loading="lazy"
+          referrerPolicy="no-referrer-when-downgrade"
+          allowFullScreen
+        />
+      ) : (
+        <div className="contact-map__placeholder" aria-hidden="true">
+          <MapPin size={26} />
+          <span>{CITY}, {ADDRESS}</span>
+        </div>
+      )}
+      <a className="contact-map__link" href={CONTACT_LINKS.address} target="_blank" rel="noreferrer">
+        <MapPin size={16} aria-hidden="true" />
+        Открыть в Яндекс Картах
+        <ArrowUpRight size={14} aria-hidden="true" />
+      </a>
+    </div>
+  );
+}
 
 const STEPS = ["Услуга", "Автомобиль", "Контакты", "Дата", "Проверка"];
 
@@ -1404,7 +1468,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="final-cta" id="contacts">
+        <section className="final-cta">
           <Picture
             className="final-media"
             mobile={art("fleet-mobile", [480, 800, 1200], "100vw")}
@@ -1420,6 +1484,79 @@ export default function Home() {
             <button type="button" className="button button--accent" onClick={() => openBooking()}>
               Записаться онлайн <ArrowUpRight size={16} aria-hidden="true" />
             </button>
+          </div>
+        </section>
+
+        <section className="section contacts-section" id="contacts" aria-labelledby="contacts-title">
+          <div className="container">
+            <div className="contacts-layout">
+              <div className="contacts-copy">
+                <span className="eyebrow">10 / Как нас найти</span>
+                <h2 id="contacts-title">
+                  Приезжайте <em>в студию.</em>
+                </h2>
+                <p>
+                  Работаем в {CITY}, в нескольких минутах от центра. Позвоните заранее — подготовим бокс и подберём время, чтобы вы не ждали в очереди.
+                </p>
+
+                <ul className="contacts-list">
+                  <li>
+                    <span className="contacts-list__icon">
+                      <MapPin size={18} aria-hidden="true" />
+                    </span>
+                    <div>
+                      <strong>Адрес</strong>
+                      <span>
+                        {CITY}, {ADDRESS}
+                      </span>
+                    </div>
+                  </li>
+                  <li>
+                    <span className="contacts-list__icon">
+                      <Clock3 size={18} aria-hidden="true" />
+                    </span>
+                    <div>
+                      <strong>Часы работы</strong>
+                      <span>{HOURS}</span>
+                    </div>
+                  </li>
+                  <li>
+                    <span className="contacts-list__icon">
+                      <Phone size={18} aria-hidden="true" />
+                    </span>
+                    <div>
+                      <strong>Телефон</strong>
+                      <a href={PHONE_HREF}>{PHONE_DISPLAY}</a>
+                    </div>
+                  </li>
+                  <li>
+                    <span className="contacts-list__icon">
+                      <MessageCircle size={18} aria-hidden="true" />
+                    </span>
+                    <div>
+                      <strong>Мессенджеры</strong>
+                      <span className="contacts-list__links">
+                        <a href={CONTACT_LINKS.whatsapp} target="_blank" rel="noreferrer">
+                          WhatsApp
+                        </a>
+                        <a href={CONTACT_LINKS.telegram} target="_blank" rel="noreferrer">
+                          Telegram
+                        </a>
+                        <a href={CONTACT_LINKS.instagram} target="_blank" rel="noreferrer">
+                          Instagram
+                        </a>
+                      </span>
+                    </div>
+                  </li>
+                </ul>
+
+                <button type="button" className="button button--accent" onClick={() => openBooking()}>
+                  Записаться онлайн <ArrowUpRight size={16} aria-hidden="true" />
+                </button>
+              </div>
+
+              <ContactMap />
+            </div>
           </div>
         </section>
       </main>
