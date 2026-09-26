@@ -21,6 +21,66 @@ import {
 
 /* ------------------------------------------------------------------ content */
 
+/* ----------------------------------------------------------------- motion */
+
+/**
+ * Adds `is-in` to `.reveal` elements once they scroll into view.
+ *
+ * One shared IntersectionObserver for the whole page rather than one per
+ * element: a single observer callback is far cheaper than 40 of them, and
+ * `unobserve` keeps the callback from firing again for settled elements.
+ * Everything is transform/opacity, so the reveal never triggers layout.
+ */
+function useRevealOnScroll() {
+  useEffect(() => {
+    const nodes = Array.from(document.querySelectorAll<HTMLElement>(".reveal:not(.is-in)"));
+    if (!nodes.length) return;
+
+    // No observer support (or reduced motion): show everything, never hide it.
+    if (typeof IntersectionObserver === "undefined" || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      nodes.forEach((n) => n.classList.add("is-in"));
+      return;
+    }
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          entry.target.classList.add("is-in");
+          io.unobserve(entry.target);
+        }
+      },
+      // Start the motion a little before the element reaches the edge, and
+      // require a sliver to be visible so tall cards do not never fire.
+      { rootMargin: "0px 0px -8% 0px", threshold: 0.08 },
+    );
+
+    nodes.forEach((n) => io.observe(n));
+    return () => io.disconnect();
+  }, []);
+}
+
+/** Dot-matrix spinner: 16 dots on a fixed grid, only transform/opacity move. */
+function DotMatrix({ label = "Отправляем" }: { label?: string }) {
+  return (
+    <span className="dm-wrap" role="status" aria-live="polite">
+      <span className="dm" aria-hidden="true">
+        {Array.from({ length: 16 }, (_, i) => (
+          <span key={i} />
+        ))}
+      </span>
+      <span className="dm-label">{label}</span>
+    </span>
+  );
+}
+
+/** Hand-drawn wobble, borrowed from the doodle-icons "boil" idea. */
+function BoilIcon({ children }: { children: ReactNode }) {
+  return <span className="doodle-boil">{children}</span>;
+}
+
+/* ------------------------------------------------------------- content */
+
 const services = [
   {
     no: "01",
@@ -123,17 +183,19 @@ const process = [
 
 const brands = ["Toyota", "Lexus", "Hyundai", "Kia", "BMW", "Mercedes-Benz", "Audi", "Volkswagen", "Mazda", "Nissan", "Skoda", "Volvo"];
 
-const PHONE_DISPLAY = "+7 700 000-00-00";
-const PHONE_HREF = "tel:+77000000000";
+/* ------------------------------------------- demo content (replace with real) */
+
+const PHONE_DISPLAY = "+7 (343) 300-90-90";
+const PHONE_HREF = "tel:+73433009090";
 const CITY = "Екатеринбург";
 const ADDRESS = "ул. Машиностроителей, 12";
 const HOURS = "Ежедневно 09:00–21:00";
 const CONTACT_LINKS = {
   phone: PHONE_HREF,
-  whatsapp: "https://wa.me/77000000000",
-  telegram: "https://t.me/apexdetailing",
-  instagram: "https://instagram.com/apexdetailing",
-  address: "https://2gis.ru",
+  whatsapp: "https://wa.me/73433009090",
+  telegram: "https://t.me/apex_detailing_ekb",
+  instagram: "https://instagram.com/apex_detailing_ekb",
+  address: "https://yandex.ru/maps/55/78738/179900",
 };
 
 const serviceOptions = ["Детейлинг", "Полировка", "Керамика", "PPF", "Химчистка салона", "Мойка", "Другое"];
@@ -350,6 +412,7 @@ function BookingSheet({ open, onClose, initialService }: { open: boolean; onClos
   const [form, setForm] = useState<BookingForm>(emptyForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [sent, setSent] = useState(false);
+  const [sending, setSending] = useState(false);
   const [dragY, setDragY] = useState(0);
   const dragStart = useRef<number | null>(null);
   const bodyRef = useRef<HTMLDivElement | null>(null);
@@ -361,6 +424,7 @@ function BookingSheet({ open, onClose, initialService }: { open: boolean; onClos
     if (!open) return;
     setStep(0);
     setSent(false);
+    setSending(false);
     setErrors({});
     setDragY(0);
     setForm({ ...emptyForm, service: initialService && serviceOptions.includes(initialService) ? initialService : "" });
@@ -434,7 +498,13 @@ function BookingSheet({ open, onClose, initialService }: { open: boolean; onClos
   const goNext = () => {
     if (!validate(step)) return;
     if (step === STEPS.length - 1) {
-      setSent(true);
+      // Demo submit: there is no backend yet, so hold the loader briefly and
+      // then show the success state. Swap this for a real request when there is.
+      setSending(true);
+      window.setTimeout(() => {
+        setSending(false);
+        setSent(true);
+      }, 900);
       return;
     }
     setStep((s) => Math.min(STEPS.length - 1, s + 1));
@@ -724,9 +794,17 @@ function BookingSheet({ open, onClose, initialService }: { open: boolean; onClos
                   Назад
                 </button>
               ) : null}
-              <button type="button" className="button button--accent" onClick={goNext}>
-                {step === STEPS.length - 1 ? "Отправить заявку" : "Продолжить"}
-                {step === STEPS.length - 1 ? <ArrowUpRight size={16} /> : <ChevronRight size={16} />}
+              <button type="button" className="button button--accent" onClick={goNext} disabled={sending}>
+                {sending ? (
+                  <>
+                    <DotMatrix label="Отправляем" />
+                  </>
+                ) : (
+                  <>
+                    {step === STEPS.length - 1 ? "Отправить заявку" : "Продолжить"}
+                    {step === STEPS.length - 1 ? <ArrowUpRight size={16} /> : <ChevronRight size={16} />}
+                  </>
+                )}
               </button>
             </div>
           </>
@@ -763,6 +841,8 @@ export default function Home() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [openService, setOpenService] = useState<string | null>(null);
   const [scrolled, setScrolled] = useState(false);
+
+  useRevealOnScroll();
 
   const openBooking = useCallback((service = "") => {
     setBookingService(service);
@@ -902,10 +982,26 @@ export default function Home() {
 
         <section className="trust-bar" aria-label="Ключевые преимущества">
           <span className="eyebrow">Уход без лишних слов</span>
-          <span className="trust-item">Цена до начала работ</span>
-          <span className="trust-item">Безопасная химия</span>
-          <span className="trust-item">Гарантия на работы</span>
-          <span className="trust-item">Фотоотчёт до/после</span>
+          {/* Duplicated once so the marquee can loop seamlessly at -50%.
+              The copy is hidden from assistive tech to avoid reading it twice. */}
+          <div className="trust-marquee" aria-hidden="true">
+            {[0, 1].map((copy) => (
+              <div className="trust-marquee-run" key={copy}>
+                <span className="trust-item">Цена до начала работ</span>
+                <span className="trust-item">Безопасная химия</span>
+                <span className="trust-item">Гарантия на работы</span>
+                <span className="trust-item">Фотоотчёт до/после</span>
+                <span className="trust-item">Опыт 7 лет</span>
+                <span className="trust-item">Запись за 1 минуту</span>
+              </div>
+            ))}
+          </div>
+          <div className="trust-static">
+            <span className="trust-item">Цена до начала работ</span>
+            <span className="trust-item">Безопасная химия</span>
+            <span className="trust-item">Гарантия на работы</span>
+            <span className="trust-item">Фотоотчёт до/после</span>
+          </div>
         </section>
 
         <section className="section services-section" id="services">
@@ -920,10 +1016,14 @@ export default function Home() {
               copy="Нажмите на услугу, чтобы увидеть детали и записаться. Цены — от базовых, точную стоимость назовём до начала работ."
             />
             <div className="services-grid">
-              {services.map((service) => {
+              {services.map((service, i) => {
                 const isOpen = openService === service.title;
                 return (
-                  <article className={`service-card ${isOpen ? "service-card--open" : ""}`} key={service.title}>
+                  <article
+                    className={`service-card reveal ${isOpen ? "service-card--open" : ""}`}
+                    style={{ "--d": `${Math.min(i, 4) * 70}ms` } as React.CSSProperties}
+                    key={service.title}
+                  >
                     <button
                       type="button"
                       className="service-card__button"
@@ -983,15 +1083,21 @@ export default function Home() {
             </p>
             <div className="feature-list">
               <div>
-                <Sparkles size={18} aria-hidden="true" />
+                <BoilIcon>
+                  <Sparkles size={18} aria-hidden="true" />
+                </BoilIcon>
                 <span>Понятные цены без «сюрпризов» в конце</span>
               </div>
               <div>
-                <ShieldCheck size={18} aria-hidden="true" />
+                <BoilIcon>
+                  <ShieldCheck size={18} aria-hidden="true" />
+                </BoilIcon>
                 <span>Гарантия на работы и защитные покрытия</span>
               </div>
               <div>
-                <Droplets size={18} aria-hidden="true" />
+                <BoilIcon>
+                  <Droplets size={18} aria-hidden="true" />
+                </BoilIcon>
                 <span>Безопасная химия — не вредит ЛКП и хрому</span>
               </div>
             </div>
@@ -1033,7 +1139,11 @@ export default function Home() {
             </div>
             <div className="work-grid">
               {portfolio.map((item, i) => (
-                <article className={`work-card work-card--${i} work-card--${item.variant}`} key={item.model}>
+                <article
+                  className={`work-card work-card--${i} work-card--${item.variant} reveal`}
+                  style={{ "--d": `${Math.min(i, 3) * 80}ms` } as React.CSSProperties}
+                  key={item.model}
+                >
                   <Picture
                     mobile={art(item.mobile, [480, 800], "(max-width: 899px) 100vw")}
                     desktop={art(item.desktop, [420, 760], "33vw")}
@@ -1063,7 +1173,11 @@ export default function Home() {
             />
             <div className="packages-grid">
               {packages.map((pack, i) => (
-                <article className={`package-card ${i === 1 ? "package-card--featured" : ""}`} key={pack.name}>
+                <article
+                  className={`package-card reveal ${i === 1 ? "package-card--featured" : ""}`}
+                  style={{ "--d": `${i * 90}ms` } as React.CSSProperties}
+                  key={pack.name}
+                >
                   {i === 1 ? <span className="package-badge">Чаще выбирают</span> : null}
                   <span className="eyebrow">0{i + 1} / {pack.name}</span>
                   <h3>{pack.title}</h3>
@@ -1099,8 +1213,8 @@ export default function Home() {
               </div>
             </div>
             <div className="reviews-grid">
-              {reviews.map((review) => (
-                <article className="review-card" key={review.name}>
+              {reviews.map((review, i) => (
+                <article className="review-card reveal" style={{ "--d": `${i * 80}ms` } as React.CSSProperties} key={review.name}>
                   <Stars />
                   <blockquote>{review.text}</blockquote>
                   <div className="review-author">
@@ -1124,7 +1238,7 @@ export default function Home() {
             </div>
             <ol className="process-steps">
               {process.map((item, i) => (
-                <li className="process-step" key={item.title}>
+                <li className="process-step reveal" style={{ "--d": `${i * 60}ms` } as React.CSSProperties} key={item.title}>
                   <span aria-hidden="true">0{i + 1}</span>
                   <div>
                     <strong>{item.title}</strong>

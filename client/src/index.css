@@ -2118,6 +2118,10 @@ em {
   }
 
   .package-card--featured {
+    /* Must keep an opaque dark fill: the generic .package-card rule above
+       sets `background: transparent` and would otherwise win the cascade,
+       leaving the lime price/badge text unreadable on the light page. */
+    background: var(--ink);
     transform: translateY(-18px);
   }
 
@@ -2416,6 +2420,378 @@ em {
   }
   to {
     transform: scale(1);
+  }
+}
+
+/* ============================================================================
+   MOTION
+   Every animation here animates only `transform` / `opacity` so the browser
+   keeps it on the compositor. No width/height/top/left/box-shadow keyframes,
+   which would force layout or paint each frame and drop the frame rate.
+   All of it is neutralised under `prefers-reduced-motion` at the bottom.
+   ========================================================================== */
+
+/* --- shared easing: slow start, decisive middle, soft landing --------------- */
+:root {
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --dur-fast: 0.18s;
+  --dur-base: 0.32s;
+  --dur-slow: 0.62s;
+}
+
+.button[disabled] {
+  cursor: default;
+  opacity: 0.85;
+  transform: none;
+}
+
+.button--accent[disabled] {
+  background: var(--accent);
+}
+
+/* --- scroll reveal ---------------------------------------------------------
+   Elements start offset and faded; `.is-in` releases them. The offset is a
+   translate, so nothing reflows. `--d` staggers siblings.                   */
+.reveal {
+  opacity: 0;
+  transform: translate3d(0, 18px, 0);
+  transition:
+    opacity var(--dur-slow) var(--ease-out-expo),
+    transform var(--dur-slow) var(--ease-out-expo);
+  transition-delay: var(--d, 0ms);
+}
+
+.reveal.is-in {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+/* --- press feedback: tactile, transform-only ------------------------------ */
+@media (hover: hover) and (pointer: fine) {
+  .button,
+  .choice,
+  .contact-pill,
+  .service-card__button,
+  .package-card .button {
+    transition:
+      transform var(--dur-fast) var(--ease-out-expo),
+      background-color var(--dur-fast) ease,
+      color var(--dur-fast) ease,
+      border-color var(--dur-fast) ease;
+  }
+
+  .button:hover,
+  .choice:hover,
+  .contact-pill:hover,
+  .package-card .button:hover {
+    transform: translate3d(0, -2px, 0);
+  }
+
+  .button:active,
+  .choice:active,
+  .contact-pill:active,
+  .service-card__button:active,
+  .package-card .button:active {
+    transform: translate3d(0, 1px, 0) scale(0.985);
+  }
+}
+
+/* --- cards: lift on hover (desktop only) --------------------------------- */
+@media (hover: hover) and (pointer: fine) and (min-width: 900px) {
+  .service-card,
+  .work-card,
+  .review-card {
+    transition: transform var(--dur-base) var(--ease-out-expo);
+  }
+
+  .service-card:hover,
+  .work-card:hover {
+    transform: translate3d(0, -4px, 0);
+  }
+
+  .review-card:hover {
+    transform: translate3d(0, -4px, 0) rotate(-0.35deg);
+  }
+}
+
+/* --- arrow nudge on links -------------------------------------------------- */
+@media (hover: hover) and (pointer: fine) {
+  .text-link svg,
+  .footer-cta a svg,
+  .header-cta svg,
+  .button--accent svg,
+  .button--outline svg {
+    transition: transform var(--dur-base) var(--ease-spring);
+  }
+
+  .text-link:hover svg {
+    transform: translate3d(3px, -3px, 0);
+  }
+
+  .footer-cta a:hover svg {
+    transform: translate3d(0, -2px, 0) rotate(-12deg);
+  }
+}
+
+/* --- trust bar: slow marquee on wide screens, static stack on phones ------- */
+/* The static stack is the phone default; the marquee only takes over on wide
+   screens, so a phone never loads a 38s animation it cannot see. */
+.trust-static {
+  display: grid;
+  gap: 8px;
+}
+
+@media (min-width: 900px) {
+  .trust-static {
+    display: none;
+  }
+}
+
+@media (max-width: 899px) {
+  .trust-marquee {
+    display: none;
+  }
+}
+
+@media (min-width: 900px) {
+  .trust-marquee {
+    display: flex;
+    align-items: center;
+    min-width: max-content;
+    animation: marquee 38s linear infinite;
+  }
+
+  .trust-marquee-run {
+    display: flex;
+    align-items: center;
+    gap: 28px;
+    padding-right: 28px;
+  }
+
+  .trust-marquee:hover {
+    animation-play-state: paused;
+  }
+}
+
+.dm-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dm-label {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+@media (min-width: 900px) {
+  .trust-bar {
+    overflow: hidden;
+  }
+}
+
+@keyframes marquee {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+/* --- doodle boil ----------------------------------------------------------
+   The hand-inked wobble: outlines that never quite land in the same place.
+   Six discrete jumps rather than a smooth tween, which is what makes it read
+   as boiling rather than sliding. Cheap because it is transform-only.       */
+.doodle-boil {
+  animation: boil 0.36s steps(1, end) infinite;
+}
+
+@keyframes boil {
+  0% {
+    transform: translate3d(0.4px, -0.3px, 0) rotate(-0.4deg);
+  }
+  20% {
+    transform: translate3d(-0.5px, 0.4px, 0) rotate(0.5deg);
+  }
+  40% {
+    transform: translate3d(0.3px, 0.5px, 0) rotate(-0.25deg);
+  }
+  60% {
+    transform: translate3d(-0.4px, -0.4px, 0) rotate(0.35deg);
+  }
+  80% {
+    transform: translate3d(0.5px, 0.2px, 0) rotate(-0.5deg);
+  }
+  100% {
+    transform: translate3d(0.4px, -0.3px, 0) rotate(-0.4deg);
+  }
+}
+
+/* Decoration only: on a device that cannot afford it the icon keeps its shape. */
+@media (prefers-reduced-motion: reduce) {
+  .doodle-boil {
+    animation: none;
+  }
+}
+
+/* --- dot-matrix loader ----------------------------------------------------
+   Dots animate only `transform` (scale) and `opacity`; their positions are
+   fixed by the grid, so no layout is recalculated while it runs.             */
+.dm {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 3px;
+  width: 40px;
+}
+
+.dm span {
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--accent);
+  transform: scale(0.32);
+  opacity: 0.35;
+  animation: dmPulse 1.15s var(--ease-out-expo) infinite;
+}
+
+@keyframes dmPulse {
+  0%,
+  100% {
+    transform: scale(0.32);
+    opacity: 0.3;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.dm span:nth-child(1) { animation-delay: 0ms; }
+.dm span:nth-child(2) { animation-delay: 70ms; }
+.dm span:nth-child(3) { animation-delay: 140ms; }
+.dm span:nth-child(4) { animation-delay: 210ms; }
+.dm span:nth-child(5) { animation-delay: 350ms; }
+.dm span:nth-child(6) { animation-delay: 420ms; }
+.dm span:nth-child(7) { animation-delay: 490ms; }
+.dm span:nth-child(8) { animation-delay: 560ms; }
+.dm span:nth-child(9) { animation-delay: 630ms; }
+.dm span:nth-child(10) { animation-delay: 700ms; }
+.dm span:nth-child(11) { animation-delay: 770ms; }
+.dm span:nth-child(12) { animation-delay: 840ms; }
+.dm span:nth-child(13) { animation-delay: 980ms; }
+.dm span:nth-child(14) { animation-delay: 1050ms; }
+.dm span:nth-child(15) { animation-delay: 1120ms; }
+.dm span:nth-child(16) { animation-delay: 1190ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  .dm span {
+    animation: none;
+    transform: scale(0.7);
+    opacity: 0.75;
+  }
+}
+
+/* --- notch motif ----------------------------------------------------------
+   A nod to the codenotch idea: a small bite out of the top edge of the
+   featured card, so the "most chosen" tier reads without any text.          */
+@media (min-width: 900px) {
+  .package-card--featured {
+    --notch-w: 26px;
+    --notch-h: 9px;
+    clip-path: polygon(
+      0 0,
+      calc(50% - var(--notch-w) / 2) 0,
+      50% var(--notch-h),
+      calc(50% + var(--notch-w) / 2) 0,
+      100% 0,
+      100% 100%,
+      0 100%
+    );
+  }
+}
+
+/* Numbers that animate must not shift the layout while counting. */
+.stat-value {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================================
+   MOBILE
+   Phones are the primary target: 44px minimum hit areas, safe-area insets for
+   notched devices, and nothing allowed to widen the page.
+   ========================================================================== */
+
+/* Every interactive control clears the 44px minimum touch target. */
+@media (max-width: 899px) {
+  .service-card__button,
+  .footer-cta a,
+  .footer-social a,
+  .brands-list span,
+  .text-link,
+  .ba-step-btn,
+  .field select,
+  .field input,
+  .field textarea {
+    min-height: var(--tap);
+  }
+
+  .footer-cta a,
+  .footer-social a,
+  .text-link,
+  .ba-step-btn {
+    display: inline-flex;
+    align-items: center;
+  }
+}
+
+/* Respect the notch / home indicator instead of sliding under it. */
+@supports (padding: max(0px)) {
+  .site-header {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .modal-backdrop,
+  .booking-modal {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .footer-bottom {
+    padding-bottom: calc(18px + env(safe-area-inset-bottom));
+  }
+}
+
+/* Notched phones in landscape need the side insets respected too. */
+@media (max-width: 899px) and (orientation: landscape) {
+  .container {
+    padding-left: max(var(--gutter), env(safe-area-inset-left));
+    padding-right: max(var(--gutter), env(safe-area-inset-right));
+  }
+}
+
+/* Long contact strings and model names must never widen the page. */
+@media (max-width: 899px) {
+  .footer-cta a,
+  .footer-bottom span,
+  .recap-row b,
+  .package-price,
+  .service-meta strong {
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 359px) {
+  .package-price {
+    font-size: 25px;
+  }
+
+  .package-card {
+    padding: 20px 16px 18px;
+  }
+
+  .hero-actions .button,
+  .final-content .button {
+    width: 100%;
   }
 }
 
