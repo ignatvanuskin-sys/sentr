@@ -198,8 +198,25 @@ const CONTACT_LINKS = {
   address: "https://yandex.ru/maps/55/78738/179900",
 };
 
-const serviceOptions = ["Детейлинг", "Полировка", "Керамика", "PPF", "Химчистка салона", "Мойка", "Другое"];
+/* Individual services, in the order a car owner actually walks the list.
+   `price` is the base rate in tenge, used only to show a live estimate. */
+const serviceOptions = [
+  { name: "Мойка кузова", price: 7000 },
+  { name: "Химчистка салона", price: 20000 },
+  { name: "Полировка кузова", price: 35000 },
+  { name: "Керамическое покрытие", price: 55000 },
+  { name: "Антидождь", price: 9000 },
+  { name: "PPF (плёнка)", price: 45000 },
+  { name: "Уход за пластиком", price: 6000 },
+] as const;
+
+const packOptions = packages.map((p) => ({ name: p.name, title: p.title, price: Number(p.price.replace(/\D/g, "").replace(/^0+/, "")) || 0 }));
+
+const serviceNames: string[] = serviceOptions.map((s) => s.name);
 const yearOptions = Array.from({ length: 30 }, (_, i) => String(new Date().getFullYear() - i));
+
+/** Renders tenge with thin spaces: 25 000 ₸ */
+const formatTenge = (value: number) => `${value.toLocaleString("ru-RU").replace(/ /g, " ")} ₸`;
 
 /* --------------------------------------------------------------- responsive */
 
@@ -380,7 +397,8 @@ function BeforeAfter() {
 /* --------------------------------------------------------------- booking UX */
 
 type BookingForm = {
-  service: string;
+  services: string[];
+  pack: string;
   make: string;
   model: string;
   year: string;
@@ -393,7 +411,8 @@ type BookingForm = {
 };
 
 const emptyForm: BookingForm = {
-  service: "",
+  services: [],
+  pack: "",
   make: "",
   model: "",
   year: "",
@@ -403,6 +422,58 @@ const emptyForm: BookingForm = {
   date: "",
   time: "",
   comment: "",
+};
+
+/** Plus glyph for "add this service"; a tick replaces it once selected. */
+function PlusIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/**
+ * Live running total. A package replaces the individual lines; a custom set adds
+ * them up. Always labelled as a preliminary figure, since the studio confirms
+ * the real cost after inspecting the car.
+ */
+function Estimate({ pack = "", services }: { pack?: string; services: string[] }) {
+  const packItem = packOptions.find((p) => p.name === pack);
+  const lines = services
+    .map((name) => serviceOptions.find((s) => s.name === name))
+    .filter((s): s is (typeof serviceOptions)[number] => Boolean(s));
+  const total = packItem ? packItem.price : lines.reduce((sum, s) => sum + s.price, 0);
+  const nothing = !packItem && lines.length === 0;
+
+  return (
+    <div className={`estimate ${nothing ? "estimate--empty" : ""}`} aria-live="polite">
+      <div className="estimate-head">
+        <span>{packItem ? `Пакет ${packItem.name}` : "Ваш набор"}</span>
+        <strong className="stat-value">{nothing ? "—" : `от ${formatTenge(total)}`}</strong>
+      </div>
+      {lines.length > 0 ? (
+        <ul className="estimate-lines">
+          {lines.map((line) => (
+            <li key={line.name}>
+              <span>{line.name}</span>
+              <span>{formatTenge(line.price)}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <p className="estimate-note">Точную стоимость подтвердит мастер после осмотра автомобиля.</p>
+    </div>
+  );
+}
+
+/* Opening the sheet from a service card passes that card's short title
+   ("Мойка", "Защита"), while the form uses the fuller option names. */
+const serviceTitleToOption: Record<string, string> = {
+  Мойка: "Мойка кузова",
+  Полировка: "Полировка кузова",
+  Защита: "Керамическое покрытие",
+  Салон: "Химчистка салона",
 };
 
 const STEPS = ["Услуга", "Автомобиль", "Контакты", "Дата", "Проверка"];
@@ -427,7 +498,13 @@ function BookingSheet({ open, onClose, initialService }: { open: boolean; onClos
     setSending(false);
     setErrors({});
     setDragY(0);
-    setForm({ ...emptyForm, service: initialService && serviceOptions.includes(initialService) ? initialService : "" });
+    // Pre-select the service the user clicked, so the form never opens empty
+    // with the choice they already made somewhere else on the page.
+    const preselected = initialService ? serviceTitleToOption[initialService] : undefined;
+    setForm({
+      ...emptyForm,
+      services: preselected && serviceNames.includes(preselected) ? [preselected] : [],
+    });
   }, [open, initialService]);
 
   /* keep the sheet inside the visible viewport when the keyboard opens */
@@ -477,7 +554,7 @@ function BookingSheet({ open, onClose, initialService }: { open: boolean; onClos
   /* validates the fields of the step the user is leaving */
   const validate = (target: number) => {
     const next: Record<string, string> = {};
-    if (target === 0 && !form.service) next.service = "Выберите услугу";
+    if (target === 0 && !form.pack && form.services.length === 0) next.services = "Выберите пакет или хотя бы одну услугу";
     if (target >= 1) {
       if (!form.make.trim()) next.make = "Укажите марку";
       if (!form.model.trim()) next.model = "Укажите модель";
@@ -594,21 +671,68 @@ function BookingSheet({ open, onClose, initialService }: { open: boolean; onClos
 
             <div className="modal-body" ref={bodyRef}>
               {step === 0 ? (
-                <div className="choice-grid">
-                  {serviceOptions.map((item) => (
+                <>
+                  <p className="form-lead">Выберите пакет целиком или соберите свой набор — можно взять несколько услуг сразу.</p>
+
+                  <div className="pack-picker" role="group" aria-label="Готовые пакеты">
                     <button
-                      key={item}
                       type="button"
-                      className={`choice ${form.service === item ? "selected" : ""}`}
-                      aria-pressed={form.service === item}
-                      onClick={() => set("service", item)}
+                      className={`pack-option ${form.pack === "" ? "selected" : ""}`}
+                      aria-pressed={form.pack === ""}
+                      onClick={() => set("pack", "")}
                     >
-                      <span>{item}</span>
-                      {form.service === item ? <Check size={16} /> : <ChevronRight size={16} />}
+                      <span className="pack-option-name">Без пакета</span>
+                      <span className="pack-option-note">Соберу услуги сам</span>
                     </button>
-                  ))}
-                  {errors.service ? <span className="field-error">{errors.service}</span> : null}
-                </div>
+                    {packOptions.map((item) => (
+                      <button
+                        key={item.name}
+                        type="button"
+                        className={`pack-option ${form.pack === item.name ? "selected" : ""}`}
+                        aria-pressed={form.pack === item.name}
+                        onClick={() => set("pack", form.pack === item.name ? "" : item.name)}
+                      >
+                        <span className="pack-option-name">{item.name}</span>
+                        <span className="pack-option-title">{item.title}</span>
+                        <span className="pack-option-price">{formatTenge(item.price)}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Picking a package replaces the individual list, the way a
+                      car owner thinks about it: either the bundle or the parts. */}
+                  {form.pack === "" ? (
+                    <>
+                      <div className="choice-grid">
+                        {serviceOptions.map((item) => {
+                          const active = form.services.includes(item.name);
+                          return (
+                            <button
+                              key={item.name}
+                              type="button"
+                              className={`choice ${active ? "selected" : ""}`}
+                              aria-pressed={active}
+                              onClick={() =>
+                                set(
+                                  "services",
+                                  active ? form.services.filter((n) => n !== item.name) : [...form.services, item.name],
+                                )
+                              }
+                            >
+                              <span>{item.name}</span>
+                              <span className="choice-price">{formatTenge(item.price)}</span>
+                              {active ? <Check size={16} /> : <PlusIcon />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {errors.services ? <span className="field-error">{errors.services}</span> : null}
+                      <Estimate services={form.services} />
+                    </>
+                  ) : (
+                    <Estimate pack={form.pack} services={[]} />
+                  )}
+                </>
               ) : null}
 
               {step === 1 ? (
@@ -746,8 +870,12 @@ function BookingSheet({ open, onClose, initialService }: { open: boolean; onClos
                 <>
                   <div className="recap">
                     <div className="recap-row">
-                      <span>Услуга</span>
-                      <b>{form.service || "—"}</b>
+                      <span>Пакет</span>
+                      <b>{form.pack ? `${form.pack} — ${packOptions.find((p) => p.name === form.pack)?.title ?? ""}` : "Без пакета"}</b>
+                    </div>
+                    <div className="recap-row">
+                      <span>Услуги{form.services.length > 1 ? ` (${form.services.length})` : ""}</span>
+                      <b>{form.services.length ? form.services.join(", ") : "—"}</b>
                     </div>
                     <div className="recap-row">
                       <span>Автомобиль</span>
