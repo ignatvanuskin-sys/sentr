@@ -199,6 +199,17 @@ const HOURS = "Ежедневно 09:00–21:00";
 /* Point used for the embedded map and the "open in maps" link.
    Demo coordinates — replace with the exact pin of the real entrance. */
 const MAP_POINT = { lat: 51.1694, lon: 71.4491 };
+
+/* 2GIS key.
+   2GIS does not offer an embed that works anonymously: their map widget is
+   issued per organisation from the personal account (widgets.2gis.com), so an
+   iframe here is useless without a key. Paste the key from that page and the
+   map switches to 2GIS. While it is empty the block shows a styled placeholder
+   with a working link, so the site is never broken — it just has no iframe yet. */
+const TWOGIS_KEY = "";
+
+/** Falls back to 2GIS search for the address when no company id is known. */
+const TWOGIS_FALLBACK_URL = `https://2gis.kz/astra/search/${encodeURIComponent(`${CITY}, ${ADDRESS}`)}`;
 const CONTACT_LINKS = {
   phone: PHONE_HREF,
   whatsapp: "https://wa.me/77172709090",
@@ -488,14 +499,25 @@ const serviceTitleToOption: Record<string, string> = {
 /**
  * Contact map.
  *
- * The Yandex widget is a third-party iframe of a few hundred kilobytes, so it is
- * only inserted after the block scrolls into view — a visitor who never reaches
- * the contacts never pays for it. The button underneath always stays a real
- * link, so the address is reachable even if the iframe is blocked or fails.
+ * Provider is chosen at build time by whether a 2GIS key is present:
+ *
+ *  - with a key   -> 2GIS widget iframe (the 2GIS map people actually use);
+ *  - without one  -> the Yandex widget, which works anonymously.
+ *
+ * 2GIS has no anonymous embed: `widget.2gis.ru` renders its banner constructor
+ * for an unknown key, so shipping it keyless would show a builder to visitors.
+ * A key comes from the 2GIS personal account (widgets.2gis.com). Until one is
+ * pasted in, the site stays on Yandex instead of showing something broken.
+ *
+ * Either way the iframe is third-party and heavy, so it is only inserted once
+ * the block is near the viewport. The link underneath is a real anchor, so the
+ * address stays reachable if the iframe is blocked or fails.
  */
 function ContactMap() {
   const holder = useRef<HTMLDivElement | null>(null);
   const [visible, setVisible] = useState(false);
+
+  const use2GIS = TWOGIS_KEY.trim().length > 0;
 
   useEffect(() => {
     const el = holder.current;
@@ -517,7 +539,13 @@ function ContactMap() {
     return () => io.disconnect();
   }, [visible]);
 
-  const src = `https://yandex.ru/map-widget/v1/?ll=${MAP_POINT.lon}%2C${MAP_POINT.lat}&z=16&pt=${MAP_POINT.lon}%2C${MAP_POINT.lat}%2Cpm2rdm`;
+  const point = `${MAP_POINT.lon}%2C${MAP_POINT.lat}`;
+  const src = use2GIS
+    ? `https://widget.2gis.ru/2.0/frame?key=${encodeURIComponent(TWOGIS_KEY.trim())}&point=${MAP_POINT.lon}%2C${MAP_POINT.lat}&z=16`
+    : `https://yandex.ru/map-widget/v1/?ll=${point}&z=16&pt=${point}%2Cpm2rdm`;
+
+  const openUrl = use2GIS ? TWOGIS_FALLBACK_URL : CONTACT_LINKS.address;
+  const openLabel = use2GIS ? "Открыть в 2ГИС" : "Открыть в Яндекс Картах";
 
   return (
     <div className="contact-map reveal" ref={holder} data-shown="">
@@ -533,12 +561,14 @@ function ContactMap() {
       ) : (
         <div className="contact-map__placeholder" aria-hidden="true">
           <MapPin size={26} />
-          <span>{CITY}, {ADDRESS}</span>
+          <span>
+            {CITY}, {ADDRESS}
+          </span>
         </div>
       )}
-      <a className="contact-map__link" href={CONTACT_LINKS.address} target="_blank" rel="noreferrer">
+      <a className="contact-map__link" href={openUrl} target="_blank" rel="noreferrer">
         <MapPin size={16} aria-hidden="true" />
-        Открыть в Яндекс Картах
+        {openLabel}
         <ArrowUpRight size={14} aria-hidden="true" />
       </a>
     </div>
