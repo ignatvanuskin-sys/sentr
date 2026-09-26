@@ -24,21 +24,26 @@ import {
 /* ----------------------------------------------------------------- motion */
 
 /**
- * Adds `is-in` to `.reveal` elements once they scroll into view.
+ * Reveals `.reveal` elements once they scroll into view.
  *
  * One shared IntersectionObserver for the whole page rather than one per
- * element: a single observer callback is far cheaper than 40 of them, and
- * `unobserve` keeps the callback from firing again for settled elements.
- * Everything is transform/opacity, so the reveal never triggers layout.
+ * element: a single callback is far cheaper than 40 of them, and `unobserve`
+ * keeps it from firing again for settled elements.
+ *
+ * The revealed flag goes on `data-shown`, NOT on a class. React owns the
+ * `className` attribute: it rewrites the whole string on re-render, so a class
+ * added here imperatively would be wiped the moment the user opens a service
+ * card and React re-renders it — the card would drop back to opacity 0 and
+ * look empty. An attribute React never renders is left alone.
  */
 function useRevealOnScroll() {
   useEffect(() => {
-    const nodes = Array.from(document.querySelectorAll<HTMLElement>(".reveal:not(.is-in)"));
+    const nodes = Array.from(document.querySelectorAll<HTMLElement>(".reveal:not([data-shown])"));
     if (!nodes.length) return;
 
     // No observer support (or reduced motion): show everything, never hide it.
     if (typeof IntersectionObserver === "undefined" || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      nodes.forEach((n) => n.classList.add("is-in"));
+      nodes.forEach((n) => n.setAttribute("data-shown", ""));
       return;
     }
 
@@ -46,13 +51,13 @@ function useRevealOnScroll() {
       (entries) => {
         for (const entry of entries) {
           if (!entry.isIntersecting) continue;
-          entry.target.classList.add("is-in");
+          entry.target.setAttribute("data-shown", "");
           io.unobserve(entry.target);
         }
       },
       // Start the motion a little before the element reaches the edge, and
-      // require a sliver to be visible so tall cards do not never fire.
-      { rootMargin: "0px 0px -8% 0px", threshold: 0.08 },
+      // require a sliver to be visible so tall cards still fire.
+      { rootMargin: "0px 0px -8% 0px", threshold: 0.04 },
     );
 
     nodes.forEach((n) => io.observe(n));
@@ -185,17 +190,17 @@ const brands = ["Toyota", "Lexus", "Hyundai", "Kia", "BMW", "Mercedes-Benz", "Au
 
 /* ------------------------------------------- demo content (replace with real) */
 
-const PHONE_DISPLAY = "+7 (343) 300-90-90";
-const PHONE_HREF = "tel:+73433009090";
-const CITY = "Екатеринбург";
-const ADDRESS = "ул. Машиностроителей, 12";
+const PHONE_DISPLAY = "+7 (7172) 70-90-90";
+const PHONE_HREF = "tel:+77172709090";
+const CITY = "Астана";
+const ADDRESS = "пр. Тракт Астана, 21";
 const HOURS = "Ежедневно 09:00–21:00";
 const CONTACT_LINKS = {
   phone: PHONE_HREF,
-  whatsapp: "https://wa.me/73433009090",
-  telegram: "https://t.me/apex_detailing_ekb",
-  instagram: "https://instagram.com/apex_detailing_ekb",
-  address: "https://yandex.ru/maps/55/78738/179900",
+  whatsapp: "https://wa.me/77172709090",
+  telegram: "https://t.me/apex_detailing_astana",
+  instagram: "https://instagram.com/apex_detailing_astana",
+  address: "https://yandex.ru/maps/51/160939/877625",
 };
 
 /* Individual services, in the order a car owner actually walks the list.
